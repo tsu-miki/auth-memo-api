@@ -1,5 +1,12 @@
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
+import { hashPassword } from './password.js'
+
+type User = {
+  id: string
+  username: string
+  passwordHash: string
+}
 
 type Memo = {
   id: string
@@ -7,9 +14,30 @@ type Memo = {
   createdAt: string
 }
 
+const users = new Map<string, User>()
 const memos = new Map<string, Memo>()
 
 const app = new Hono()
+
+app.post('/users', async (c) => {
+  const body = await c.req.json<{ username?: unknown; password?: unknown }>()
+  if (typeof body.username !== 'string' || body.username === '') {
+    return c.json({ error: 'username is required' }, 400)
+  }
+  if (typeof body.password !== 'string' || body.password.length < 8) {
+    return c.json({ error: 'password must be at least 8 characters' }, 400)
+  }
+  if (users.has(body.username)) {
+    return c.json({ error: 'username already taken' }, 409)
+  }
+  const user: User = {
+    id: crypto.randomUUID(),
+    username: body.username,
+    passwordHash: await hashPassword(body.password),
+  }
+  users.set(user.username, user)
+  return c.json({ id: user.id, username: user.username }, 201)
+})
 
 app.get('/memos', (c) => {
   return c.json([...memos.values()])
